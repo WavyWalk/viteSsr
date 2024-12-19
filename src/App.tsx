@@ -1,99 +1,14 @@
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
-import { SubscriptionState } from './SubscriptionState.ts'
+import {
+  getStoreState,
+  SerializableSubscriptionState,
+} from './getStoreState.ts'
 import { use } from 'react'
-
-export type StateEntry = {
-  state: unknown
-  initialized: boolean
-}
-
-const getStore = async (): Promise<Map<string, StateEntry | undefined>> => {
-  if (import.meta.env.SSR) {
-    const store = await import('./ServerAsyncStorage.ts')
-      .then((module) => module.serverAsyncStorage)
-      .then((serverAsyncStorage) => {
-        return serverAsyncStorage.getStore()
-      })
-
-    if (!store) {
-      throw new Error('Store not found')
-    }
-
-    return store as unknown as Map<string, StateEntry | undefined>
-  } else {
-    window.__STORES__ ??= new Map()
-    return window.__STORES__
-  }
-}
-
-class SerializableSubscriptionState<T> extends SubscriptionState {
-  state?: T = undefined
-
-  initialized = false
-
-  update = () => {
-    console.log()
-    this._update()
-  }
-}
-
-async function initState<X, T = Record<string, unknown>>(
-  store: Map<string, StateEntry | undefined>,
-  key: string,
-  initializer: (update: SubscriptionState['update'], hydratedState: T) => X,
-): Promise<X & SerializableSubscriptionState<T>> {
-  const value = store.get(key)
-
-  if (value?.initialized) {
-    return value as X & SerializableSubscriptionState<T>
-  }
-
-  let hydratedState
-  if (import.meta.env.SSR) {
-    hydratedState = undefined
-  } else {
-    hydratedState = value?.state
-  }
-
-  const subscriptionState = new SerializableSubscriptionState()
-  subscriptionState.state = hydratedState as unknown
-
-  const userState = initializer(subscriptionState.update, hydratedState as T)
-
-  Object.assign(subscriptionState, userState)
-  // @ts-expect-error -- alls good
-  store.set(key, subscriptionState)
-  subscriptionState.initialized = true
-
-  return subscriptionState as X & SerializableSubscriptionState<T>
-}
 
 if (!import.meta.env.SSR) {
   window.__STORE_PROMISES__ ??= new Map()
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function storeState<X, T = Record<string, any>>(
-  key: string,
-  initializer: (update: SubscriptionState['update'], hydratedState: T) => X,
-): Promise<X & SerializableSubscriptionState<T>> {
-  if (import.meta.env.SSR) {
-    return getStore().then((store) => {
-      return initState(store, key, initializer)
-    })
-  } else {
-    window.__STORES__ ??= new Map()
-    if (!window.__STORES__.has(key)) {
-      // @ts-expect-error -- alls good
-      window.__STORES__.set(key, initState(window.__STORES__, key, initializer))
-    }
-    // @ts-expect-error -- alls good
-    return window.__STORES__.get(key) as Promise<
-      X & SerializableSubscriptionState<T>
-    >
-  }
 }
 
 const delayed = async (ms: number) => {
@@ -109,34 +24,52 @@ const delayed = async (ms: number) => {
   })
 }
 
-const globalConfigStore = () => {
-  return storeState('globalConfig', (update, hydrated) => {
-    const state = {
-      userName: hydrated?.userName ?? 'joe',
-      delayed: delayed(500),
-    }
+type GlobalConfigStore = SerializableSubscriptionState<{
+  state: {
+    userName: string
+    // delayed: Promise<string>
+  }
+  actions: {
+    setName: (value: string) => void
+  }
+}>
 
-    return {
-      state,
-      setName: (value: string) => {
-        state.userName = value
-        update()
-      },
-    }
-  })
+const globalConfigStore = () => {
+  return getStoreState<GlobalConfigStore>(
+    'globalConfig',
+    (update, hydrated) => {
+      const state = {
+        userName: hydrated?.userName ?? 'joe',
+        // delayed: delayed(5000),
+      }
+
+      return {
+        state,
+        actions: {
+          setName: (value: string) => {
+            state.userName = value
+            console.log(update)
+            update()
+          },
+        },
+      }
+    },
+  )
 }
 
 const UserComp = () => {
-  const state = use(globalConfigStore())
+  const store = use(globalConfigStore())
 
-  state.subscribeToUpdates()
+  store.subscribeThisComponentToStateUpdates()
+
+  console.log(this)
 
   return (
     <div>
-      {state?.state?.userName} delayed : {state.state.delayed}
+      {store?.state.userName} delayed
       <button
         onClick={() => {
-          state?.setName?.('Chewbie')
+          store?.actions.setName('Chewbie')
         }}
       >
         change

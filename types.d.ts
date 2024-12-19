@@ -1,4 +1,4 @@
-import { StateEntry } from './src/App.tsx'
+import { StateEntry } from './src/getStoreState.ts'
 
 export {} // Ensure this file is treated as a module
 

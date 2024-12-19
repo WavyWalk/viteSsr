@@ -8,9 +8,6 @@ export const render = (_req: Request, res: Response, template: string) => {
     serverAsyncStorage.run(new Map(), () => {
       const stream = renderToPipeableStream(<App />, {
         onAllReady: async () => {
-          const store = serverAsyncStorage.getStore()
-          console.log(store?.get('foo'))
-
           const [uptoDehydrated, afterDehydrated] = template.split(
             '<!--dehydrated-state-->',
           )

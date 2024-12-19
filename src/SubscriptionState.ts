@@ -20,7 +20,7 @@ export interface ISubscribedEntry extends ISubscribeOptions<any> {
  * anytime update is called will rerender each subscribed component.
  * on component unmount, the component will automatically be unsubscribed.
  *
- * @see subscribeToUpdates()
+ * @see subscribeThisComponentToStateUpdates()
  */
 export class SubscriptionState {
   /**
@@ -96,7 +96,7 @@ export class SubscriptionState {
    * // that's it.
    * ```
    */
-  public subscribeToUpdates(
+  public subscribeThisComponentToStateUpdates(
     options?: ISubscribeOptions<this> | ISubscribeOptions<this>['deps'],
   ): this {
     if (typeof options === 'function') {
@@ -107,7 +107,7 @@ export class SubscriptionState {
      * e.g. if we would pass any other value, react does check by strict comparison, but incrementing a number always
      * trigger an update.
      * */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     const [_, updateState] = useState(1)
 
     const id = useMemo(() => {
@@ -116,7 +116,7 @@ export class SubscriptionState {
       /** will write entry with updateState func under generated key */
       this.subscribe(id, updateState, options as ISubscribeOptions<this>)
       return id
-    }, [this])
+    }, [this, options])
 
     /**
      * because use runs on each render, the entry of this object on state be updated with the version of state
@@ -136,7 +136,7 @@ export class SubscriptionState {
         /** your cleanup func if provided */
         ;(options as ISubscribeOptions<this>)?.onUnsubscribed?.()
       }
-    }, [])
+    }, [id, options, this])
     return this
   }
 
