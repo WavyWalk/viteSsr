@@ -96,10 +96,24 @@ function storeState<X, T = Record<string, any>>(
   }
 }
 
+const delayed = async (ms: number) => {
+  return new Promise<string>((resolve) => {
+    console.log('running promise')
+    return setTimeout(() => {
+      if (import.meta.env.SSR) {
+        resolve('done')
+      } else {
+        resolve('client doen')
+      }
+    }, ms)
+  })
+}
+
 const globalConfigStore = () => {
   return storeState('globalConfig', (update, hydrated) => {
     const state = {
       userName: hydrated?.userName ?? 'joe',
+      delayed: delayed(500),
     }
 
     return {
@@ -114,11 +128,12 @@ const globalConfigStore = () => {
 
 const UserComp = () => {
   const state = use(globalConfigStore())
+
   state.subscribeToUpdates()
 
   return (
     <div>
-      {state?.state?.userName}{' '}
+      {state?.state?.userName} delayed : {state.state.delayed}
       <button
         onClick={() => {
           state?.setName?.('Chewbie')
