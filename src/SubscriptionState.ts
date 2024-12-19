@@ -113,8 +113,6 @@ export class SubscriptionState {
     const id = useMemo(() => {
       /** increment internal last id and return it */
       const id = this.getNextSubscribedComponentId()
-      /** will write entry with updateState func under generated key */
-      this.subscribe(id, updateState, options as ISubscribeOptions<this>)
       return id
     }, [this, options])
 
@@ -123,10 +121,12 @@ export class SubscriptionState {
      * existing at the moment of render, later that version be used to prevent unnecessary rerenders
      * (e.g. if parent already cascaded an update for this comp).
      * */
-    this.subscribedEntries[id].lastVersion = this.version
+    if (this.subscribedEntries[id]) {
+      this.subscribedEntries[id].lastVersion = this.version
+    }
 
     useEffect(() => {
-      /** Restore subscription on edgecases, e.g. react 18 double useffect run. */
+      /** Subscribe after mounted, otherwise state updates could be called on unmounted components */
       if (!this.subscribedEntries[id]) {
         this.subscribe(id, updateState, options as ISubscribeOptions<this>)
       }
