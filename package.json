@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --inspect-brk server.ts",
+    "dev": "tsx server.ts",
+    "dev:debug": "tsx watch --inspect-brk server.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

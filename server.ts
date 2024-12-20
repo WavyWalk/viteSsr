@@ -60,13 +60,7 @@ async function createServer() {
   // middlewares). The following is valid even after restarts.
   app.use(vite.middlewares)
 
-  app.use((_req, _res, next) => {
-    serverAsyncStorage.run(new Map(), next)
-  })
-
   app.use('*', async (req, res, next) => {
-    const store = serverAsyncStorage.getStore()
-    store?.set('a,', 'b')
     await renderSsr(req, vite, res, next)
   })
 

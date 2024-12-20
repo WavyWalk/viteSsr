@@ -136,25 +136,9 @@ export const getStoreState = <T extends SerializableSubscriptionState<any>>(
   }
 }
 
-async function resolveAllPromises(obj: any): Promise<any> {
-  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-    const resolvedObject: Record<string, any> = {}
-    for (const [key, value] of Object.entries(obj)) {
-      resolvedObject[key] = await resolveAllPromises(value)
-    }
-    return resolvedObject
-  } else if (Array.isArray(obj)) {
-    return Promise.all(obj.map(resolveAllPromises))
-  } else if (obj instanceof Promise) {
-    return await obj
-  } else {
-    return obj
-  }
-}
-
-export const serializeStoreStateOnNode = async (
+export const serializeStoreStateOnNode = (
   store: Map<string, SerializableSubscriptionState | undefined> | undefined,
-): Promise<string> => {
+): string => {
   const serializedStore: Record<string, StateEntry> = {}
 
   if (!store) {
@@ -169,8 +153,6 @@ export const serializeStoreStateOnNode = async (
       }
     }
   })
-
-  await resolveAllPromises(serializedStore)
 
   return JSON.stringify(serializedStore)
 }

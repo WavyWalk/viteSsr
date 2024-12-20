@@ -1,11 +1,13 @@
+import './App.css'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
-import './App.css'
 import {
   getStoreState,
   SerializableSubscriptionState,
 } from './getStoreState.ts'
-import { Suspense, use } from 'react'
+import { use } from 'react'
+import { PromisifiedState, promisify } from './promisify.tsx'
+import fs from 'node:fs'
 
 if (!import.meta.env.SSR) {
   window.__STORE_PROMISES__ ??= new Map()
@@ -33,82 +35,14 @@ type GlobalConfigStore = SerializableSubscriptionState<{
   }>
 }>
 
-export type PromisifiedState = {
-  promise: Promise<unknown>
-  loading: boolean
-  value?: any
-  error?: any
-  settled: boolean
-}
-
-export const promisify = (
-  hydrated: PromisifiedState | undefined,
-  update: () => void,
-  fetcher: () => Promise<unknown>,
-): PromisifiedState => {
-  const valueToUse = hydrated ?? {
-    promise: fetcher()
-      .then((it) => {
-        Object.assign(valueToUse, {
-          value: it,
-          loading: false,
-          error: false,
-          settled: true,
-        })
-        update()
-      })
-      .catch((e) => {
-        Object.assign(valueToUse, {
-          value: undefined,
-          loading: false,
-          error: e,
-          settled: true,
-        })
-        update()
-      }),
-    loading: true,
-    error: false,
-    value: undefined,
-    settled: false,
-  }
-
-  if (!import.meta.env.SSR) {
-    if (valueToUse.settled && Object.keys(valueToUse.promise).length === 0) {
-      valueToUse.promise = Promise.resolve(valueToUse.value)
-    }
-
-    if (!valueToUse.settled && Object.keys(valueToUse.promise).length === 0) {
-      valueToUse.promise = Promise.resolve(undefined)
-    }
-  }
-
-  if (!valueToUse.promise && !valueToUse.settled) {
-    valueToUse.loading = true
-    valueToUse.settled = false
-    valueToUse.promise = fetcher()
-      .then((it) => {
-        valueToUse.value = it
-        valueToUse.loading = false
-        valueToUse.error = false
-        valueToUse.settled = true
-        update()
-      })
-      .catch((e) => {
-        valueToUse.value = undefined
-        valueToUse.loading = false
-        valueToUse.error = e
-        valueToUse.settled = true
-        update()
-      })
-  }
-
-  return valueToUse
-}
-
 const globalConfigStore = () => {
   return getStoreState<GlobalConfigStore>(
     'globalConfig',
     (update, hydrated) => {
+      if (import.meta.env.SSR) {
+        console.log(fs.existsSync('/foo.tmp'))
+      }
+
       const state: GlobalConfigStore['state'] = {
         userName: hydrated?.userName ?? 'joe',
         delayed: promisify(hydrated?.delayed, update, () =>
@@ -143,7 +77,7 @@ const UserComp = () => {
 
   return (
     <div>
-      {store?.state.userName} asd as wer delayed {store.state.delayed?.value}
+      {store?.state.userName} joe {store.state.delayed?.value}
       <button
         onClick={() => {
           store?.actions.setName('Chewbie')
@@ -168,9 +102,7 @@ function App() {
       </div>
       <h1>Vite + React</h1>
       <div className="card">
-        <Suspense fallback={'loading'}>
-          <UserComp />
-        </Suspense>
+        <UserComp />
       </div>
       <p className="read-the-docs">
         Click on the Vite and React logos to learn more
