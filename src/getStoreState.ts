@@ -22,8 +22,8 @@ async function getRootStoreInNode() {
 }
 
 const getStoreRootStoreInBrowser = () => {
-  window.__STORES__ ??= new Map()
-  return window.__STORES__
+  window.__SERVER_STATE__ ??= new Map()
+  return window.__SERVER_STATE__
 }
 
 const getRootStore = async (): Promise<Map<string, StateEntry | undefined>> => {
@@ -47,14 +47,12 @@ export class SerializableSubscriptionState<
 
   update = (state?: T) => {
     this.state = state ?? this.state
-    console.log(this)
     this._update()
   }
 }
 
 const initState = async (
-  rootStore: Map<string, StateEntry | undefined>,
-  key: string,
+  stateValue: StateEntry,
   initializer: (
     update: SerializableSubscriptionState['update'],
     hydratedState: SerializableSubscriptionState['state'],
@@ -63,21 +61,14 @@ const initState = async (
     'update' | 'initialized' | 'subscribeThisComponentToStateUpdates'
   >,
 ): Promise<SerializableSubscriptionState> => {
-  const value = rootStore.get(key)
-
-  if (value?.initialized) {
-    return value as SerializableSubscriptionState
-  }
-
   let hydratedState
   if (import.meta.env.SSR) {
     hydratedState = undefined
   } else {
-    hydratedState = value?.state
+    hydratedState = stateValue?.state
   }
 
   const subscriptionState = new SerializableSubscriptionState()
-  subscriptionState.state = hydratedState as Record<string, unknown>
 
   const initializedState = initializer(
     subscriptionState.update,
@@ -85,8 +76,6 @@ const initState = async (
   )
 
   Object.assign(subscriptionState, initializedState)
-  rootStore.set(key, subscriptionState)
-  subscriptionState.initialized = true
 
   return subscriptionState as SerializableSubscriptionState
 }
@@ -102,7 +91,10 @@ const initOrReuseStoreStateInNode = (
   >,
 ) =>
   getRootStore().then((store) => {
-    return initState(store, key, initializer)
+    return initState(store.get('key')!, initializer).then((state) => {
+      store.set(key, state)
+      return state
+    })
   })
 
 const initOrReuseStoreStateInBrowser = (
@@ -115,12 +107,16 @@ const initOrReuseStoreStateInBrowser = (
     'update' | 'initialized' | 'subscribeThisComponentToStateUpdates'
   >,
 ): Promise<unknown> => {
-  window.__STORES__ ??= new Map()
-  if (!window.__STORES__.has(key)) {
-    // @ts-expect-error -- alls good
-    window.__STORES__.set(key, initState(window.__STORES__, key, initializer))
+  window.__SERVER_STATE__ ??= new Map()
+  window.__STORE_INSTANCES__ ??= new Map()
+
+  const serverState = window.__SERVER_STATE__.get(key)
+  const valueOnStore = window.__STORE_INSTANCES__.get(key)
+
+  if (!valueOnStore) {
+    window.__STORE_INSTANCES__.set(key, initState(serverState!, initializer))
   }
-  return window.__STORES__.get(key) as unknown as Promise<unknown>
+  return window.__STORE_INSTANCES__.get(key) as unknown as Promise<unknown>
 }
 
 export const getStoreState = <T extends SerializableSubscriptionState<any>>(
@@ -138,4 +134,43 @@ export const getStoreState = <T extends SerializableSubscriptionState<any>>(
   } else {
     return initOrReuseStoreStateInBrowser(key, factory) as Promise<T>
   }
+}
+
+async function resolveAllPromises(obj: any): Promise<any> {
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+    const resolvedObject: Record<string, any> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      resolvedObject[key] = await resolveAllPromises(value)
+    }
+    return resolvedObject
+  } else if (Array.isArray(obj)) {
+    return Promise.all(obj.map(resolveAllPromises))
+  } else if (obj instanceof Promise) {
+    return await obj
+  } else {
+    return obj
+  }
+}
+
+export const serializeStoreStateOnNode = async (
+  store: Map<string, SerializableSubscriptionState | undefined> | undefined,
+): Promise<string> => {
+  const serializedStore: Record<string, StateEntry> = {}
+
+  if (!store) {
+    return '{}'
+  }
+
+  store.forEach((value, key) => {
+    if (value) {
+      serializedStore[key] = {
+        state: value.state,
+        initialized: false,
+      }
+    }
+  })
+
+  await resolveAllPromises(serializedStore)
+
+  return JSON.stringify(serializedStore)
 }
