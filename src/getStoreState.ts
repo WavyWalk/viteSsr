@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { SubscriptionState } from './SubscriptionState.ts'
 
 export type StateEntry = {
@@ -36,7 +38,7 @@ export class SerializableSubscriptionState<
   T extends {
     state: Record<string, unknown>
     actions: Record<string, CallableFunction>
-  },
+  } = { state: Record<string, any>; actions: Record<string, CallableFunction> },
 > extends SubscriptionState {
   state!: T['state']
   actions!: T['actions']
@@ -50,15 +52,21 @@ export class SerializableSubscriptionState<
   }
 }
 
-async function initState<X, T = Record<string, unknown>>(
+const initState = async (
   rootStore: Map<string, StateEntry | undefined>,
   key: string,
-  initializer: (update: SubscriptionState['update'], hydratedState: T) => X,
-): Promise<X & SerializableSubscriptionState<T>> {
+  initializer: (
+    update: SerializableSubscriptionState['update'],
+    hydratedState: SerializableSubscriptionState['state'],
+  ) => Omit<
+    SerializableSubscriptionState,
+    'update' | 'initialized' | 'subscribeThisComponentToStateUpdates'
+  >,
+): Promise<SerializableSubscriptionState> => {
   const value = rootStore.get(key)
 
   if (value?.initialized) {
-    return value as X & SerializableSubscriptionState<T>
+    return value as SerializableSubscriptionState
   }
 
   let hydratedState
@@ -69,48 +77,50 @@ async function initState<X, T = Record<string, unknown>>(
   }
 
   const subscriptionState = new SerializableSubscriptionState()
-  subscriptionState.state = hydratedState as unknown
+  subscriptionState.state = hydratedState as Record<string, unknown>
 
   const initializedState = initializer(
     subscriptionState.update,
-    hydratedState as T,
+    hydratedState as SerializableSubscriptionState['state'],
   )
 
   Object.assign(subscriptionState, initializedState)
-  // @ts-expect-error -- all's good we're coolin'
   rootStore.set(key, subscriptionState)
   subscriptionState.initialized = true
 
-  return subscriptionState as X & SerializableSubscriptionState<T>
+  return subscriptionState as SerializableSubscriptionState
 }
 
-const initOrReuseStoreStateInNode = <FINAL_STATE_TYPE, STATE_TYPE>(
+const initOrReuseStoreStateInNode = (
   key: string,
   initializer: (
-    update: SubscriptionState['update'],
-    hydratedState: STATE_TYPE,
-  ) => FINAL_STATE_TYPE,
+    update: SerializableSubscriptionState['update'],
+    hydratedState: SerializableSubscriptionState['state'],
+  ) => Omit<
+    SerializableSubscriptionState,
+    'update' | 'initialized' | 'subscribeThisComponentToStateUpdates'
+  >,
 ) =>
   getRootStore().then((store) => {
     return initState(store, key, initializer)
   })
 
-const initOrReuseStoreStateInBrowser = <FINAL_STATE_TYPE, STATE_TYPE>(
+const initOrReuseStoreStateInBrowser = (
   key: string,
   initializer: (
-    update: SubscriptionState['update'],
-    hydratedState: STATE_TYPE,
-  ) => FINAL_STATE_TYPE,
-) => {
+    update: SerializableSubscriptionState<any>['update'],
+    hydratedState: SerializableSubscriptionState<any>['state'],
+  ) => Omit<
+    SerializableSubscriptionState,
+    'update' | 'initialized' | 'subscribeThisComponentToStateUpdates'
+  >,
+): Promise<unknown> => {
   window.__STORES__ ??= new Map()
   if (!window.__STORES__.has(key)) {
     // @ts-expect-error -- alls good
     window.__STORES__.set(key, initState(window.__STORES__, key, initializer))
   }
-  // @ts-expect-error -- alls good
-  return window.__STORES__.get(key) as Promise<
-    FINAL_STATE_TYPE & SerializableSubscriptionState<STATE_TYPE>
-  >
+  return window.__STORES__.get(key) as unknown as Promise<unknown>
 }
 
 export const getStoreState = <T extends SerializableSubscriptionState<any>>(
@@ -124,8 +134,8 @@ export const getStoreState = <T extends SerializableSubscriptionState<any>>(
   >,
 ): Promise<T> => {
   if (import.meta.env.SSR) {
-    return initOrReuseStoreStateInNode(key, factory) as unknown as Promise<T>
+    return initOrReuseStoreStateInNode(key, factory) as Promise<T>
   } else {
-    return initOrReuseStoreStateInBrowser(key, factory) as unknown as Promise<T>
+    return initOrReuseStoreStateInBrowser(key, factory) as Promise<T>
   }
 }

@@ -29,28 +29,30 @@ type GlobalConfigStore = SerializableSubscriptionState<{
     userName: string
     delayed?: Promise<string>
   }
-  actions: {
+  actions: Readonly<{
     setName: (value: string) => void
-  }
+  }>
 }>
 
 const globalConfigStore = () => {
   return getStoreState<GlobalConfigStore>(
     'globalConfig',
     (update, hydrated) => {
-      const state = {
+      const state: GlobalConfigStore['state'] = {
         userName: hydrated?.userName ?? 'joe',
         delayed: undefined,
       }
 
+      const actions: GlobalConfigStore['actions'] = {
+        setName: () => {
+          state.delayed = delayed(5000)
+          update()
+        },
+      }
+
       return {
         state,
-        actions: {
-          setName: (value: string) => {
-            state.delayed = delayed(5000)
-            update()
-          },
-        },
+        actions,
       }
     },
   )
