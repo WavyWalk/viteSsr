@@ -5,9 +5,9 @@ import {
   getStoreState,
   SerializableSubscriptionState,
 } from './getStoreState.ts'
-import { use } from 'react'
+import { Suspense } from 'react'
 import { PromisifiedState, promisify } from './promisify.tsx'
-import fs from 'node:fs'
+import { useIsomorphic } from './useIsomorphic.ts'
 
 if (!import.meta.env.SSR) {
   window.__STORE_PROMISES__ ??= new Map()
@@ -39,22 +39,18 @@ const globalConfigStore = () => {
   return getStoreState<GlobalConfigStore>(
     'globalConfig',
     (update, hydrated) => {
-      if (import.meta.env.SSR) {
-        console.log(fs.existsSync('/foo.tmp'))
-      }
-
       const state: GlobalConfigStore['state'] = {
         userName: hydrated?.userName ?? 'joe',
-        delayed: promisify(hydrated?.delayed, update, () =>
+        delayed: promisify(hydrated?.delayed, update, async () =>
           delayed(500, 'hydro'),
         ),
       }
 
       const actions: GlobalConfigStore['actions'] = {
-        setName: (name: string) => {
+        setName: async (name: string) => {
           state.userName = name
-          state.delayed = promisify(undefined, update, () =>
-            delayed(200, 'call bitch'),
+          state.delayed = promisify(state.delayed, update, () =>
+            delayed(5000, 'call bitch'),
           )
           update()
         },
@@ -68,16 +64,41 @@ const globalConfigStore = () => {
   )
 }
 
+type DependentState = SerializableSubscriptionState<{
+  state: { delayedFromGlobalDependent: PromisifiedState; other: string }
+  actions: {}
+}>
+
+const someStore = () => {
+  return getStoreState<DependentState>('dependent', (update, hydrated) => {
+    return {
+      state: {
+        other: 'Other',
+        delayedFromGlobalDependent: promisify(
+          hydrated?.delayedFromGlobalDependent,
+          update,
+          async () => {
+            const global = await globalConfigStore()
+            await global.state.delayed.promise
+
+            return global.state.delayed.value + '-fromOther'
+          },
+        ),
+      },
+      actions: {},
+    }
+  })
+}
+
 const UserComp = () => {
-  const store = use(globalConfigStore())
-  store.subscribeThisComponentToStateUpdates()
-  if (import.meta.env.SSR) {
-    use(store.state.delayed.promise)
-  }
+  const store = useIsomorphic(globalConfigStore())
+  const otherStore = useIsomorphic(someStore())
 
   return (
     <div>
-      {store?.state.userName} joe {store.state.delayed?.value}
+      {JSON.stringify(store?.state, null, 2)}
+      {JSON.stringify(otherStore?.state, null, 2)}
+      {/*{otherStore.state.delayedFromGlobalDependent?.value}*/}
       <button
         onClick={() => {
           store?.actions.setName('Chewbie')
@@ -85,6 +106,17 @@ const UserComp = () => {
       >
         change
       </button>{' '}
+    </div>
+  )
+}
+
+const Account = () => {
+  const otherStore = useIsomorphic(globalConfigStore())
+
+  return (
+    <div>
+      <p>Account</p>
+      <p>{otherStore.state.userName}</p>
     </div>
   )
 }
@@ -102,7 +134,10 @@ function App() {
       </div>
       <h1>Vite + React</h1>
       <div className="card">
-        <UserComp />
+        <Suspense>
+          <UserComp />
+          <Account />
+        </Suspense>
       </div>
       <p className="read-the-docs">
         Click on the Vite and React logos to learn more
