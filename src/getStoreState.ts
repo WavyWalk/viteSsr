@@ -91,6 +91,10 @@ const initOrReuseStoreStateInNode = (
   >,
 ) =>
   getRootStore().then((store) => {
+    if (store.get(key)) {
+      return store.get(key)!
+    }
+
     return initState(store.get('key')!, initializer).then((state) => {
       store.set(key, state)
       return state
